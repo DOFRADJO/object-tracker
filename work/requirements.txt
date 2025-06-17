@@ -1,0 +1,8 @@
+fastapi==0.110.2
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+requests==2.31.0
+opencv-python==4.9.0.80
+pymongo==4.6.3
+pillow==10.3.0  # au cas où tu charges des images dans PIL
+python-dotenv==1.0.1  # si tu veux gérer les configs .env

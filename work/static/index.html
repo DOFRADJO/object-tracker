@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Tracking d'Objets</title>
+    <style>
+        canvas { border: 2px solid #444; }
+        .scene-frame { cursor: pointer; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h2>Upload d'une Vidéo</h2>
+    <input type="file" id="videoInput" accept="video/*">
+    <button onclick="uploadVideo()">Envoyer</button>
+
+    <h3>Scènes détectées</h3>
+    <div id="scenesContainer"></div>
+
+    <h3>Annotation de la première frame</h3>
+    <canvas id="canvas" width="640" height="360"></canvas>
+    <br>
+    <button onclick="sendTracking()">Lancer le tracking</button>
+
+    <script>
+        let videoId = "";
+        let selectedScene = "";
+        let boxes = [];
+        let startX, startY, isDrawing = false;
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        let currentFrameImg = new Image();
+
+        canvas.onmousedown = e => {
+            isDrawing = true;
+            startX = e.offsetX;
+            startY = e.offsetY;
+        };
+
+        canvas.onmouseup = e => {
+            isDrawing = false;
+            const endX = e.offsetX;
+            const endY = e.offsetY;
+            const box = {
+                x: Math.min(startX, endX),
+                y: Math.min(startY, endY),
+                w: Math.abs(endX - startX),
+                h: Math.abs(endY - startY)
+            };
+            boxes.push(box);
+            drawImageAndBoxes();
+        };
+
+        function drawImageAndBoxes() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(currentFrameImg, 0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = "red";
+            boxes.forEach(box => {
+                ctx.strokeRect(box.x, box.y, box.w, box.h);
+            });
+        }
+
+        async function uploadVideo() {
+            const file = document.getElementById("videoInput").files[0];
+            if (!file) {
+                alert("Veuillez sélectionner un fichier vidéo.");
+                return;
+            }
+
+            const form = new FormData();
+            form.append("file", file);
+
+            try {
+                const uploadRes = await fetch("/upload", { method: "POST", body: form });
+                if (!uploadRes.ok) throw new Error("Erreur upload");
+
+                const uploadData = await uploadRes.json();
+                videoId = uploadData.video_id;
+
+                // scenes.scenes : c’est le tableau des scènes
+                if (uploadData.scenes && uploadData.scenes.scenes) {
+                    displayScenes(uploadData.scenes.scenes);
+                } else {
+                    alert("Aucune scène détectée");
+                }
+            } catch (e) {
+                alert("Erreur lors de l'upload : " + e.message);
+            }
+        }
+
+        function displayScenes(scenes) {
+            const container = document.getElementById("scenesContainer");
+            container.innerHTML = "";
+            scenes.forEach((scene, idx) => {
+                const img = document.createElement("img");
+                img.src = scene.frames[0]; // Affiche première frame
+                img.width = 160;
+                img.className = "scene-frame";
+                img.onclick = () => loadFirstFrame(scene.frames[0]);
+                container.appendChild(img);
+            });
+        }
+
+        function loadFirstFrame(src) {
+            currentFrameImg.onload = () => {
+                drawImageAndBoxes();
+            };
+            currentFrameImg.src = src;
+            boxes = [];
+        }
+
+        async function sendTracking() {
+            const annotations = boxes.map(box => ({
+                frame: 0,
+                bbox: [box.x, box.y, box.w, box.h]
+            }));
+            const form = new FormData();
+            form.append("video_id", videoId);
+            form.append("annotations_json", JSON.stringify(annotations));
+            form.append("tracker_type", "CSRT");
+
+            const res = await fetch("/track", { method: "POST", body: form });
+            const data = await res.json();
+            alert("Tracking terminé. Résultat : " + data.video_result_url);
+        }
+    </script>
+</body>
+</html>
